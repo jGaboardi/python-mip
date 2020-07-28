@@ -133,6 +133,11 @@ class Model:
         self.__seed = 0
         self.__round_int_vars = True
         self.__sol_pool_size = 10
+<<<<<<< HEAD
+=======
+        self.__max_seconds_same_incumbent = mip.INF
+        self.__max_nodes_same_incumbent = mip.INF
+>>>>>>> upstream/master
 
     def __del__(self: "Model"):
         del self.solver
@@ -401,6 +406,7 @@ class Model:
         # list of constraints and variables
         self.constrs = mip.ConstrList(self)
         self.vars = mip.VarList(self)
+<<<<<<< HEAD
 
         # initializing additional control variables
         self.__cuts = 1
@@ -416,6 +422,23 @@ class Model:
         Args:
             solver_name(str): solver name (optional)
 
+=======
+
+        # initializing additional control variables
+        self.__cuts = 1
+        self.__cuts_generator = None
+        self.__lazy_constrs_generator = None
+        self.__start = []
+        self._status = mip.OptimizationStatus.LOADED
+        self.__threads = 0
+
+    def copy(self: "Model", solver_name: str = "") -> "Model":
+        """ Creates a copy of the current model
+
+        Args:
+            solver_name(str): solver name (optional)
+
+>>>>>>> upstream/master
         :rtype: Model
 
         Returns:
@@ -471,6 +494,7 @@ class Model:
             return None
         return self.vars[v]
 
+<<<<<<< HEAD
     def generate_cuts(
         self: "Model",
         cut_types: Optional[List["mip.CutType"]] = None,
@@ -934,6 +958,514 @@ class Model:
     def cuts_generator(self: "Model", cuts_generator: Optional["mip.ConstrsGenerator"]):
         self.__cuts_generator = cuts_generator
 
+=======
+    def clique_merge(self, constrs: Optional[List["mip.Constr"]] = None):
+        r"""This procedure searches for constraints with conflicting variables
+        and attempts to group these constraints in larger constraints with all
+        conflicts merged.
+
+        For example, if your model has the following constraints:
+
+        .. math::
+
+            x_1 + x_2   \leq 1
+
+            x_2 + x_3   \leq 1
+
+            x_1 + x_3   \leq 1
+
+        Then they can all be removed and replaced by the stronger inequality:
+
+        .. math::
+
+            x_1 + x_2 + x_3 \leq 1
+
+        Args:
+            constrs (Optional[List[Constrs]]): constraints that should be checked for
+                merging. If nor informed, all constraints will be checked.
+
+        """
+        self.solver.clique_merge(constrs)
+        self.constrs.update_constrs(self.solver.num_rows())
+
+    def generate_cuts(
+        self: "Model",
+        cut_types: Optional[List["mip.CutType"]] = None,
+        max_cuts: int = 8192,
+        min_viol: float = 1e-4,
+    ) -> mip.CutPool:
+        """Tries to generate cutting planes for the current fractional
+        solution. To optimize only the linear programming relaxation and not
+        discard integrality information from variables you must call first
+        :code:`model.optimize(relax=True)`.
+
+        This method only works with the CBC mip solver, as Gurobi does not
+        supports calling only cut generators.
+
+        Args:
+            cut_types (List[CutType]): types of cuts that can be generated, if
+                an empty list is specified then all available cut generators
+                will be called.
+            max_cuts(int): cut separation will stop when at least max_cuts
+                violated cuts were found.
+            min_viol(float): cuts which are not violated by at least min_viol
+                will be discarded.
+
+
+        """
+        if self.status != mip.OptimizationStatus.OPTIMAL:
+            raise mip.SolutionNotAvailable()
+
+        return self.solver.generate_cuts(cut_types, max_cuts)
+
+    @property
+    def conflict_graph(self: "Model") -> "mip.ConflictGraph":
+        """Returns the :class:`~mip.ConflictGraph` of a MIP model.
+
+        :rtype: mip.ConflictGraph
+        """
+
+        return mip.ConflictGraph(self)
+
+    def optimize(
+        self: "Model",
+        max_seconds: numbers.Real = mip.INF,
+        max_nodes: int = mip.INT_MAX,
+        max_solutions: int = mip.INT_MAX,
+        max_seconds_same_incumbent: numbers.Real = mip.INF,
+        max_nodes_same_incumbent: int = mip.INT_MAX,
+        relax: bool = False,
+    ) -> mip.OptimizationStatus:
+        """ Optimizes current model
+
+        Optimizes current model, optionally specifying processing limits.
+
+        To optimize model :code:`m` within a processing time limit of
+        300 seconds::
+
+            m.optimize(max_seconds=300)
+
+        Args:
+            max_seconds (numbers.Real): Maximum runtime in seconds (default: inf)
+            max_nodes (int): Maximum number of nodes (default: inf)
+            max_solutions (int): Maximum number of solutions (default: inf)
+            max_seconds_same_incumbent (numbers.Real): Maximum time in seconds
+                that the search can go on if a feasible solution is available
+                and it is not being improved
+            max_nodes_same_incumbent (int): Maximum number of nodes
+                that the search can go on if a feasible solution is available
+                and it is not being improved
+            relax (bool): if true only the linear programming relaxation will
+                be solved, i.e. integrality constraints will be temporarily
+                discarded.
+
+        Returns:
+            optimization status, which can be OPTIMAL(0), ERROR(-1),
+            INFEASIBLE(1), UNBOUNDED(2). When optimizing problems
+            with integer variables some additional cases may happen,
+            FEASIBLE(3) for the case when a feasible solution was found
+            but optimality was not proved, INT_INFEASIBLE(4) for the case
+            when the lp relaxation is feasible but no feasible integer
+            solution exists and NO_SOLUTION_FOUND(5) for the case when
+            an integer solution was not found in the optimization.
+
+        :rtype: mip.OptimizationStatus
+
+        """
+        if not self.solver.num_cols():
+            logger.warning("Model has no variables. Nothing to optimize.")
+            return mip.OptimizationStatus.OTHER
+
+        if self.__threads != 0:
+            self.solver.set_num_threads(self.__threads)
+        # self.solver.set_callbacks(branch_selector,
+        # incumbent_updater, lazy_constrs_generator)
+        self.solver.set_processing_limits(
+            max_seconds,
+            max_nodes,
+            max_solutions,
+            max_seconds_same_incumbent,
+            max_nodes_same_incumbent,
+        )
+
+        self._status = self.solver.optimize(relax)
+        # has a solution and is a MIP
+        if self.num_solutions and self.num_int > 0:
+            best = self.objective_value
+            lb = self.objective_bound
+            if abs(best) <= 1e-10:
+                self.__gap = mip.INF
+            else:
+                self.__gap = abs(best - lb) / abs(best)
+
+        if self.store_search_progress_log:
+            self.__plog.log = self.solver.get_log()
+            self.__plog.instance = self.name
+
+        return self._status
+
+    def read(self: "Model", path: str):
+        """Reads a MIP model or an initial feasible solution.
+
+           One of  the following file name extensions should be used
+           to define the contents of what will be loaded:
+
+           :code:`.lp`
+             mip model stored in the
+             `LP file format <https://www.ibm.com/support/knowledgecenter/SSSA5P_12.9.0/ilog.odms.cplex.help/CPLEX/GettingStarted/topics/tutorials/InteractiveOptimizer/usingLPformat.html>`_
+
+           :code:`.mps`
+             mip model stored in the
+             `MPS file format <https://en.wikipedia.org/wiki/MPS_(format)>`_
+
+           :code:`.sol`
+             initial feasible solution
+
+        Note: if a new problem is readed, all variables, constraints
+        and parameters from the current model will be cleared.
+
+        Args:
+            path(str): file name
+        """
+        if not isfile(path):
+            raise OSError(2, "File {} does not exists".format(path))
+
+        if path.lower().endswith(".sol") or path.lower().endswith(".mst"):
+            mip_start = load_mipstart(path)
+            if not mip_start:
+                raise FileNotFoundError(
+                    "File {} does not contains a valid feasible \
+                                 solution.".format(
+                        path
+                    )
+                )
+            var_list = []
+            for name, value in mip_start:
+                var = self.var_by_name(name)
+                if var is not None:
+                    var_list.append((var, value))
+            if not var_list:
+                raise ValueError(
+                    "Invalid variable(s) name(s) in \
+                                 mipstart file {}".format(
+                        path
+                    )
+                )
+
+            self.start = var_list
+            return
+
+        # reading model
+        model_ext = [".lp", ".mps", ".mps.gz"]
+
+        fn_low = path.lower()
+        for ext in model_ext:
+            if fn_low.endswith(ext):
+                self.clear()
+                self.solver.read(path)
+                self.vars.update_vars(self.solver.num_cols())
+                self.constrs.update_constrs(self.solver.num_rows())
+                return
+
+        raise ValueError(
+            "Use .lp, .mps, .sol or .mst as file extension \
+                         to indicate the file format."
+        )
+
+    def relax(self: "Model"):
+        """ Relax integrality constraints of variables
+
+        Changes the type of all integer and binary variables to
+        continuous. Bounds are preserved.
+        """
+        self.solver.relax()
+
+    def write(self: "Model", file_path: str):
+        """Saves a MIP model or an initial feasible solution.
+
+           One of  the following file name extensions should be used
+           to define the contents of what will be saved:
+
+           :code:`.lp`
+             mip model stored in the
+             `LP file format <https://www.ibm.com/support/knowledgecenter/SSSA5P_12.9.0/ilog.odms.cplex.help/CPLEX/GettingStarted/topics/tutorials/InteractiveOptimizer/usingLPformat.html>`_
+
+           :code:`.mps`
+             mip model stored in the
+             `MPS file format <https://en.wikipedia.org/wiki/MPS_(format)>`_
+
+           :code:`.sol`
+             initial feasible solution
+
+        Args:
+            file_path(str): file name
+        """
+        if file_path.lower().endswith(".sol") or file_path.lower().endswith(".mst"):
+            if self.start:
+                save_mipstart(self.start, file_path)
+            else:
+                mip_start = [(var, var.x) for var in self.vars if abs(var.x) >= 1e-8]
+                save_mipstart(mip_start, file_path)
+        elif file_path.lower().endswith(".lp") or file_path.lower().endswith(".mps"):
+            self.solver.write(file_path)
+        else:
+            raise ValueError(
+                "Use .lp, .mps, .sol or .mst as file extension \
+                             to indicate the file format."
+            )
+
+    @property
+    def objective_bound(self: "Model") -> Optional[numbers.Real]:
+        """
+            A valid estimate computed for the optimal solution cost,
+            lower bound in the case of minimization, equals to
+            :attr:`~mip.Model.objective_value` if the
+            optimal solution was found.
+        """
+        if self.status not in [
+            mip.OptimizationStatus.OPTIMAL,
+            mip.OptimizationStatus.FEASIBLE,
+            mip.OptimizationStatus.NO_SOLUTION_FOUND,
+        ]:
+            return None
+
+        return self.solver.get_objective_bound()
+
+    @property
+    def name(self: "Model") -> str:
+        """The problem (instance) name
+
+           This name should be used to identify the instance that this model
+           refers, e.g.: productionPlanningMay19. This name is stored when
+           saving (:meth:`~mip.Model.write`) the model in :code:`.LP`
+           or :code:`.MPS` file formats.
+        """
+        return self.solver.get_problem_name()
+
+    @name.setter
+    def name(self: "Model", name: str):
+        self.solver.set_problem_name(name)
+
+    @property
+    def objective(self: "Model") -> "mip.LinExpr":
+        """The objective function of the problem as a linear expression.
+
+        Examples:
+
+            The following code adds all :code:`x` variables :code:`x[0],
+            ..., x[n-1]`, to the objective function of model :code:`m`
+            with the same cost :code:`w`::
+
+                m.objective = xsum(w*x[i] for i in range(n))
+
+            A simpler way to define the objective function is the use of the
+            model operator += ::
+
+                m += xsum(w*x[i] for i in range(n))
+
+            Note that the only difference of adding a constraint is the lack of
+            a sense and a rhs.
+
+            :rtype: mip.LinExpr
+        """
+        return self.solver.get_objective()
+
+    @objective.setter
+    def objective(
+        self: "Model",
+        objective: Union[numbers.Real, "mip.Var", "mip.LinExpr", "mip.LinExprTensor"],
+    ):
+        if isinstance(objective, numbers.Real):
+            self.solver.set_objective(mip.LinExpr([], [], objective))
+        elif isinstance(objective, mip.Var):
+            self.solver.set_objective(mip.LinExpr([objective], [1]))
+        elif isinstance(objective, mip.LinExpr):
+            self.solver.set_objective(objective)
+        elif isinstance(objective, mip.LinExprTensor):
+            if np is None:
+                raise ModuleNotFoundError(
+                    "You need to install package numpy to use tensors"
+                )
+            if objective.size != 1:
+                raise ValueError(
+                    "objective set to tensor of shape {}, only scalars are allowed".format(
+                        objective.shape
+                    )
+                )
+            self.solver.set_objective(objective.flatten()[0])
+        else:
+            raise TypeError("type {} not supported".format(type(objective)))
+
+    @property
+    def verbose(self: "Model") -> int:
+        """0 to disable solver messages printed on the screen, 1 to enable
+        """
+        return self.solver.get_verbose()
+
+    @verbose.setter
+    def verbose(self: "Model", verbose: int):
+        self.solver.set_verbose(verbose)
+
+    @property
+    def lp_method(self: "Model") -> mip.LP_Method:
+        """Which  method should be used to solve the linear programming
+        problem. If the problem has integer variables that this affects only
+        the solution of the first linear programming relaxation.
+
+        :rtype: mip.LP_Method
+        """
+        return self.__lp_method
+
+    @lp_method.setter
+    def lp_method(self: "Model", lpm: mip.LP_Method):
+        self.__lp_method = lpm
+
+    @property
+    def threads(self: "Model") -> int:
+        r"""number of threads to be used when solving the problem.
+        0 uses solver default configuration, -1 uses the number of available
+        processing cores and :math:`\geq 1` uses the specified number of
+        threads. An increased number of threads may improve the solution
+        time but also increases the memory consumption."""
+        return self.__threads
+
+    @threads.setter
+    def threads(self: "Model", threads: int):
+        self.__threads = threads
+
+    @property
+    def sense(self: "Model") -> str:
+        """ The optimization sense
+
+        Returns:
+            the objective function sense, MINIMIZE (default) or (MAXIMIZE)
+        """
+
+        return self.solver.get_objective_sense()
+
+    @sense.setter
+    def sense(self: "Model", sense: str):
+        self.solver.set_objective_sense(sense)
+
+    @property
+    def objective_const(self: "Model") -> float:
+        """Returns the constant part of the objective function
+        """
+        return self.solver.get_objective_const()
+
+    @objective_const.setter
+    def objective_const(self: "Model", objective_const: float):
+        self.solver.set_objective_const(objective_const)
+
+    @property
+    def objective_value(self: "Model") -> Optional[numbers.Real]:
+        """Objective function value of the solution found or None
+        if model was not optimized
+        """
+        return self.solver.get_objective_value()
+
+    @property
+    def gap(self: "Model") -> float:
+        r"""
+           The optimality gap considering the cost of the best solution found
+           (:attr:`~mip.Model.objective_value`)
+           :math:`b` and the best objective bound :math:`l`
+           (:attr:`~mip.Model.objective_bound`) :math:`g` is
+           computed as: :math:`g=\\frac{|b-l|}{|b|}`.
+           If no solution was found or if :math:`b=0` then :math:`g=\infty`.
+           If the optimal solution was found then :math:`g=0`.
+        """
+        return self.__gap
+
+    @property
+    def search_progress_log(self: "Model") -> mip.ProgressLog:
+        """
+            Log of bound improvements in the search.
+            The output of MIP solvers is a sequence of improving
+            incumbent solutions (primal bound) and estimates for the optimal
+            cost (dual bound). When the costs of these two bounds match the
+            search is concluded. In truncated searches, the most common
+            situation for hard problems, at the end of the search there is a
+            :attr:`~mip.Model.gap` between these bounds. This
+            property stores the detailed events of improving these
+            bounds during the search process. Analyzing the evolution
+            of these bounds you can see if you need to improve your
+            solver w.r.t. the production of feasible solutions, by including an
+            heuristic to produce a better initial feasible solution, for
+            example, or improve the formulation with cutting planes, for
+            example, to produce better dual bounds. To enable storing the
+            :attr:`~mip.Model.search_progress_log` set
+            :attr:`~mip.Model.store_search_progress_log` to True.
+
+            :rtype: mip.ProgressLog
+        """
+        return self.__plog
+
+    @property
+    def store_search_progress_log(self: "Model") -> bool:
+        """
+            Wether :attr:`~mip.Model.search_progress_log` will be stored
+            or not when optimizing. Default False. Activate it if you want to
+            analyze bound improvements over time."""
+        return self.__store_search_progress_log
+
+    @store_search_progress_log.setter
+    def store_search_progress_log(self: "Model", store: bool):
+        self.__store_search_progress_log = store
+
+    # def plot_bounds_evolution(self):
+    #    import matplotlib.pyplot as plt
+    #    log = self.search_progress_log
+    #
+    #    # plotting lower bound
+    #    x = [a[0] for a in log]
+    #    y = [a[1][0] for a in log]
+    #    plt.plot(x, y)
+    #    # plotting upper bound
+    #    x = [a[0] for a in log if a[1][1] < 1e+50]
+    #    y = [a[1][1] for a in log if a[1][1] < 1e+50]
+    #    plt.plot(x, y)
+    #    plt.show()
+
+    @property
+    def num_solutions(self: "Model") -> int:
+        """Number of solutions found during the MIP search
+
+        Returns:
+            number of solutions stored in the solution pool
+
+        """
+        return self.solver.get_num_solutions()
+
+    @property
+    def objective_values(self: "Model") -> List[numbers.Real]:
+        """List of costs of all solutions in the solution pool
+
+        Returns:
+            costs of all solutions stored in the solution pool
+            as an array from 0 (the best solution) to
+            :attr:`~mip.Model.num_solutions`-1.
+        """
+        return [self.solver.get_objective_value_i(i) for i in range(self.num_solutions)]
+
+    @property
+    def cuts_generator(self: "Model") -> Optional["mip.ConstrsGenerator"]:
+        """A cuts generator is an :class:`~mip.ConstrsGenerator`
+        object that receives a fractional solution and tries to generate one or
+        more constraints (cuts) to remove it. The cuts generator is called in
+        every node of the branch-and-cut tree where a solution that violates
+        the integrality constraint of one or more variables is found.
+
+        :rtype: Optional[mip.ConstrsGenerator]
+        """
+
+        return self.__cuts_generator
+
+    @cuts_generator.setter
+    def cuts_generator(self: "Model", cuts_generator: Optional["mip.ConstrsGenerator"]):
+        self.__cuts_generator = cuts_generator
+
+>>>>>>> upstream/master
     @property
     def lazy_constrs_generator(self: "Model",) -> Optional["mip.ConstrsGenerator"]:
         """A lazy constraints generator is an
@@ -1169,6 +1701,7 @@ class Model:
     @infeas_tol.setter
     def infeas_tol(self: "Model", inf_tol: float):
         self.__infeas_tol = inf_tol
+<<<<<<< HEAD
 
     @property
     def opt_tol(self: "Model") -> float:
@@ -1215,6 +1748,54 @@ class Model:
         """time limit in seconds for search"""
         return self.solver.get_max_seconds()
 
+=======
+
+    @property
+    def opt_tol(self: "Model") -> float:
+        """Maximum reduced cost value for a solution of the LP relaxation to be
+        considered optimal. Default value: 1e-6.  Tightening this value can
+        increase the numerical precision but also probably increase the running
+        time. As floating point computations always involve some loss of
+        precision, values too close to zero will likely render some models
+        impossible to optimize."""
+        return self.__opt_tol
+
+    @opt_tol.setter
+    def opt_tol(self: "Model", tol: float):
+        self.__opt_tol = tol
+
+    @property
+    def max_mip_gap_abs(self: "Model") -> float:
+        """Tolerance for the quality of the optimal solution, if a solution
+        with cost :math:`c` and a lower bound :math:`l` are available and
+        :math:`c-l<` :code:`mip_gap_abs`, the search will be concluded, see
+        :attr:`~mip.Model.max_mip_gap` to determine a percentage value.
+        Default value: 1e-10."""
+        return self.__max_mip_gap_abs
+
+    @max_mip_gap_abs.setter
+    def max_mip_gap_abs(self: "Model", max_mip_gap_abs: float):
+        self.__max_mip_gap_abs = max_mip_gap_abs
+
+    @property
+    def max_mip_gap(self: "Model") -> float:
+        """value indicating the tolerance for the maximum percentage deviation
+        from the optimal solution cost, if a solution with cost :math:`c` and
+        a lower bound :math:`l` are available and
+        :math:`(c-l)/l <` :code:`max_mip_gap` the search will be concluded.
+        Default value: 1e-4."""
+        return self.__max_mip_gap
+
+    @max_mip_gap.setter
+    def max_mip_gap(self: "Model", max_mip_gap: float):
+        self.__max_mip_gap = max_mip_gap
+
+    @property
+    def max_seconds(self: "Model") -> float:
+        """time limit in seconds for search"""
+        return self.solver.get_max_seconds()
+
+>>>>>>> upstream/master
     @max_seconds.setter
     def max_seconds(self: "Model", max_seconds: float):
         self.solver.set_max_seconds(max_seconds)

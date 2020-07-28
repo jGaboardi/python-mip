@@ -2,7 +2,10 @@
 Python-MIP
 """
 from typing import List, Tuple, Optional, Union
+<<<<<<< HEAD
 from sys import maxsize
+=======
+>>>>>>> upstream/master
 import numbers
 import mip
 
@@ -61,11 +64,21 @@ class Solver:
     def generate_cuts(
         self,
         cut_types: Optional[List[mip.CutType]] = None,
+<<<<<<< HEAD
         max_cuts: int = maxsize,
+=======
+        max_cuts: int = mip.INT_MAX,
+>>>>>>> upstream/master
         min_viol: numbers.Real = 1e-4,
     ) -> "mip.CutPool":
         pass
 
+<<<<<<< HEAD
+=======
+    def clique_merge(self, constrs: Optional[List["mip.Constr"]] = None):
+        pass
+
+>>>>>>> upstream/master
     def optimize(self: "Solver", relax: bool = False,) -> "mip.OptimizationStatus":
         pass
 
@@ -101,8 +114,15 @@ class Solver:
     def set_processing_limits(
         self: "Solver",
         max_time: numbers.Real = mip.INF,
+<<<<<<< HEAD
         max_nodes: int = maxsize,
         max_sol: int = maxsize,
+=======
+        max_nodes: int = mip.INT_MAX,
+        max_sol: int = mip.INT_MAX,
+        max_seconds_same_incumbent: float = mip.INF,
+        max_nodes_same_incumbent: int = mip.INT_MAX,
+>>>>>>> upstream/master
     ):
         pass
 

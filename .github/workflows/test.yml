@@ -44,6 +44,12 @@ jobs:
             python-version: pypy3
           - os: windows-2016
             python-version: pypy3
+<<<<<<< HEAD
+=======
+          # temporarily exclude pypy3 on macos
+          - os: macos-latest
+            python-version: pypy3
+>>>>>>> upstream/master
 
     steps:
 
@@ -73,6 +79,7 @@ jobs:
 
     - name: Install dependencies CPython
       if: ${{ matrix.python-version != 'pypy3' }}
+<<<<<<< HEAD
       run: python -m pip install cffi pytest pytest-xdist networkx numpy matplotlib
 
     - name: Install dependencies PyPy
@@ -82,6 +89,17 @@ jobs:
     - name: Install dependencies PyPy (macOS)
       if: ${{ matrix.python-version == 'pypy3' && matrix.os == 'macos-latest' }}
       run: python -m pip install cffi pytest pytest-xdist networkx "numpy<=1.18.5"
+=======
+      run: python -m pip install cffi pytest networkx numpy matplotlib
+
+    - name: Install dependencies PyPy
+      if: ${{ matrix.python-version == 'pypy3' && matrix.os != 'macos-latest' }}
+      run: python -m pip install cffi pytest networkx numpy
+
+    - name: Install dependencies PyPy (macOS)
+      if: ${{ matrix.python-version == 'pypy3' && matrix.os == 'macos-latest' }}
+      run: python -m pip install cffi pytest networkx "numpy<=1.18.5"
+>>>>>>> upstream/master
 
     - name: Install mip
       run: python -m pip install .
@@ -91,5 +109,10 @@ jobs:
 
     - name: run tests
       run: |
+<<<<<<< HEAD
         python -m pytest test --verbose --color=yes --doctest-modules -n 2
         python -m pytest mip --verbose --color=yes --doctest-modules --ignore="mip/gurobi.py" -n 2
+=======
+        python -m pytest test --verbose --color=yes --doctest-modules
+        python -m pytest mip --verbose --color=yes --doctest-modules --ignore="mip/gurobi.py"
+>>>>>>> upstream/master

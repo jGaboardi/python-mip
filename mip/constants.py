@@ -1,14 +1,26 @@
 """Python-MIP constants"""
 
 from enum import Enum
+<<<<<<< HEAD
 
 VERSION = "1.9.3"
+=======
+from cffi import FFI
+
+VERSION = "1.10.0"
+
+ffi = FFI()
+>>>>>>> upstream/master
 
 # epsilon number (practical zero)
 EPS = 10e-64
 
 # infinity representation
 INF = float("inf")
+<<<<<<< HEAD
+=======
+INT_MAX = 2 ** (ffi.sizeof("int") * 8 - 2)
+>>>>>>> upstream/master
 
 # constraint senses
 EQUAL = "="
