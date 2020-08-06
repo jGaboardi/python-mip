@@ -65,8 +65,13 @@ class Solver:
         self,
         cut_types: Optional[List[mip.CutType]] = None,
 <<<<<<< HEAD
+<<<<<<< HEAD
         max_cuts: int = maxsize,
 =======
+=======
+        depth: int = 0,
+        npass: int = 0,
+>>>>>>> upstream/master
         max_cuts: int = mip.INT_MAX,
 >>>>>>> upstream/master
         min_viol: numbers.Real = 1e-4,
@@ -311,4 +316,10 @@ class Solver:
         """Returns all assignment conflicting with the assignment in v1 in the
         conflict graph.
         """
+        pass
+
+    def feature_values(self: "Solver") -> List[float]:
+        pass
+
+    def feature_names(self: "Solver") -> List[str]:
         pass

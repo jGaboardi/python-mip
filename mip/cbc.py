@@ -145,8 +145,7 @@ if has_cbc:
         const double *dvec, int nint, const int *ivec,
         int nchar, char **cvec);
 
-    typedef void(*cbc_cut_callback)(void *osiSolver,
-        void *osiCuts, void *appdata);
+    typedef void(*cbc_cut_callback)(void *osiSolver, void *osiCuts, void *appdata, int level, int npass);
 
     typedef int (*cbc_incumbent_callback)(void *cbcModel,
         double obj, int nz,
@@ -419,16 +418,27 @@ enum DblParam {
 
     int Cbc_solveLinearProgram(Cbc_Model *model);
 
+    /*! Type of cutting plane */
     enum CutType {
-      CT_Gomory         = 0,  /*! Gomory cuts obtained from the tableau */
-      CT_MIR            = 1,  /*! Mixed integer rounding cuts */
-      CT_ZeroHalf       = 2,  /*! Zero-half cuts */
-      CT_Clique         = 3,  /*! Clique cuts */
-      CT_KnapsackCover  = 4,  /*! Knapsack cover cuts */
-      CT_LiftAndProject = 5   /*! Lift and project cuts */
+      CT_Probing          =  0,  /*! Cuts generated evaluating the impact of fixing bounds for integer variables */
+      CT_Gomory           =  1,  /*! Gomory cuts obtained from the tableau, implemented by John Forrest  */
+      CT_GMI              =  2,  /*! Gomory cuts obtained from the tableau, implementation from Giacomo Nannicini focusing on safer cuts */
+      CT_LaGomory         =  3,  /*! Additional gomory cuts, simplification of 'A Relax-and-Cut Framework for Gomory's Mixed-Integer Cuts' by Matteo Fischetti & Domenico Salvagnin */
+      CT_RedSplit         =  4,  /*! Reduce and split cuts, implemented by Francois Margot */
+      CT_RedSplitG        =  5,  /*! Reduce and split cuts, implemented by Giacomo Nannicini */
+      CT_FlowCover        =  6,  /*! Flow cover cuts */
+      CT_MIR              =  7,  /*! Mixed-integer rounding cuts */
+      CT_TwoMIR           =  8,  /*! Two-phase Mixed-integer rounding cuts */
+      CT_LaTwoMIR         =  9,  /*! Lagrangean relaxation for two-phase Mixed-integer rounding cuts, as in CT_LaGomory */
+      CT_LiftAndProject   = 10,  /*! Lift and project cuts */
+      CT_ResidualCapacity = 11,  /*! Residual capacity cuts */
+      CT_ZeroHalf         = 12,  /*! Zero-half cuts */
+      CT_Clique           = 13,  /*! Clique cuts */
+      CT_OddWheel         = 14,  /*! Lifted odd-hole inequalities */
+      CT_KnapsackCover    = 15,  /*! Knapsack cover cuts */
     };
 
-    void Cgl_generateCuts( void *osiClpSolver, enum CutType ct, void *osiCuts, int strength );
+    void Cbc_generateCuts( Cbc_Model *cbcModel, enum CutType ct, void *oc, int depth, int pass );
 
     void Cbc_strengthenPacking(Cbc_Model *model);
 
@@ -592,6 +602,12 @@ enum DblParam {
     } CGNeighbors;
 
     CGNeighbors CG_conflictingNodes(Cbc_Model *model, void *cgraph, size_t node);
+
+    void Cbc_computeFeatures(Cbc_Model *model, double *features);
+
+    int Cbc_nFeatures();
+
+    const char *Cbc_featureName(int i);
     """
     )
 
@@ -654,8 +670,12 @@ Cbc_setDblParam = cbclib.Cbc_setDblParam
 >>>>>>> upstream/master
 Cbc_getSolverPtr = cbclib.Cbc_getSolverPtr
 
-Cgl_generateCuts = cbclib.Cgl_generateCuts
+Cbc_generateCuts = cbclib.Cbc_generateCuts
 Cbc_solveLinearProgram = cbclib.Cbc_solveLinearProgram
+
+Cbc_computeFeatures = cbclib.Cbc_computeFeatures
+Cbc_nFeatures = cbclib.Cbc_nFeatures
+Cbc_featureName = cbclib.Cbc_featureName
 
 OsiCuts_new = cbclib.OsiCuts_new
 OsiCuts_addRowCut = cbclib.OsiCuts_addRowCut
@@ -952,6 +972,8 @@ class SolverCbc(Solver):
     def generate_cuts(
         self,
         cut_types: Optional[List[CutType]] = None,
+        depth: int = 0,
+        npass: int = 0,
         max_cuts: int = maxsize,
         min_viol: numbers.Real = 1e-4,
     ) -> CutPool:
@@ -959,16 +981,36 @@ class SolverCbc(Solver):
         cbc_model = self._model
         osi_solver = Cbc_getSolverPtr(cbc_model)
         osi_cuts = OsiCuts_new()
+        nbin = 0
+        for v in self.model.vars:
+            if v.var_type == BINARY:
+                nbin += 1
 
         if not cut_types:
-            cut_types = [e for e in CutType]
+            cut_types = [
+                CutType.GOMORY,
+                CutType.MIR,
+                CutType.TWO_MIR,
+                CutType.KNAPSACK_COVER,
+                CutType.CLIQUE,
+                CutType.ZERO_HALF,
+                CutType.ODD_WHEEL,
+            ]
         for cut_type in cut_types:
             if self.__verbose >= 1:
                 logger.info(
                     "searching for violated " "{} cuts ... ".format(cut_type.name)
                 )
+
+            if nbin == 0:
+                if cut_type in [CutType.CLIQUE, CutType.ODD_WHEEL]:
+                    continue
+
             nc1 = OsiCuts_sizeRowCuts(osi_cuts)
-            Cgl_generateCuts(osi_solver, int(cut_type.value), osi_cuts, int(1))
+
+            Cbc_generateCuts(
+                self._model, int(cut_type.value), osi_cuts, int(depth), int(npass),
+            )
             nc2 = OsiCuts_sizeRowCuts(osi_cuts)
             if self.__verbose >= 1:
                 logger.info("{} found.\n".format(nc2 - nc1))
@@ -1057,10 +1099,10 @@ class SolverCbc(Solver):
         # cut callback
         @ffi.callback(
             """
-            void (void *osi_solver, void *osi_cuts, void *app_data)
+            void (void *osi_solver, void *osi_cuts, void *app_data, int level, int npass)
         """
         )
-        def cbc_cut_callback(osi_solver, osi_cuts, app_data):
+        def cbc_cut_callback(osi_solver, osi_cuts, app_data, depth, npass):
             if (
                 osi_solver == ffi.NULL
                 or osi_cuts == ffi.NULL
@@ -1089,9 +1131,11 @@ class SolverCbc(Solver):
             osi_model.solver.osi_cutsp = osi_cuts
             osi_model.fractional = fractional
             if fractional and self.model.cuts_generator:
-                self.model.cuts_generator.generate_constrs(osi_model)
+                self.model.cuts_generator.generate_constrs(osi_model, depth, npass)
             if (not fractional) and self.model.lazy_constrs_generator:
-                self.model.lazy_constrs_generator.generate_constrs(osi_model)
+                self.model.lazy_constrs_generator.generate_constrs(
+                    osi_model, depth, npass
+                )
 
         if self.__verbose == 0:
             cbclib.Cbc_setLogLevel(self._model, 0)
@@ -1640,6 +1684,17 @@ class SolverCbc(Solver):
 
     def constr_get_slack(self, constr: Constr) -> Optional[numbers.Real]:
         return self.__slack[constr.idx]
+
+    def feature_values(self) -> List[float]:
+        n = int(Cbc_nFeatures())
+        fv = ffi.new("double[%d]" % n)
+        Cbc_computeFeatures(self._model, fv)
+        return [float(fv[i]) for i in range(n)]
+
+
+def feature_names() -> List[str]:
+    n = int(Cbc_nFeatures())
+    return [ffi.string(Cbc_featureName(i)).decode("utf-8") for i in range(n)]
 
 
 class ModelOsi(Model):

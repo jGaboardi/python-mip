@@ -44,12 +44,14 @@ class ColumnsGenerator:
 
 
 class ConstrsGenerator:
-    """Abstract class for implementing cuts and lazy constraints generators."""
+    """Abstract class for implementing cuts and lazy constraints generators.
+
+    """
 
     def __init__(self):
         pass
 
-    def generate_constrs(self, model: "mip.Model"):
+    def generate_constrs(self, model: "mip.Model", depth: int = 0, npass: int = 0):
         """Method called by the solver engine to generate *cuts* or *lazy constraints*.
 
            After analyzing the contents of the solution in model
@@ -80,6 +82,8 @@ class ConstrsGenerator:
                 query model properties and add cuts (:meth:`~mip.Model.add_cut`) or lazy constraints
                 (:meth:`~mip.Model.add_lazy_constr`), but you cannot
                 perform other model modifications, such as add columns.
+            depth(int): depth of the search tree (0 is the root node)
+            npass(int): current number of cut passes in this node
         """
         raise NotImplementedError()
 
@@ -132,13 +136,14 @@ class IncumbentUpdater:
         best_bound: float,
         solution: List[Tuple["mip.Var", float]],
     ) -> List[Tuple["mip.Var", float]]:
-        """method that is called when a new integer feasible solution is found
+        """Method that is called when a new integer feasible solution is found
 
         Args:
             objective_value(float): cost of the new solution found
             best_bound(float): current lower bound for the optimal solution
-            cost solution(List[Tuple[mip.Var,float]]): non-zero variables
-            in the solution
+              cost
+            solution(List[Tuple[mip.Var,float]]): non-zero variables
+              in the solution
 
         :rtype: List[Tuple[mip.Var, float]]
         """

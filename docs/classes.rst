@@ -4,8 +4,6 @@ Classes
 .. _chapClasses:
 
 .. automodule:: mip.callbacks
-.. automodule:: mip.constants
-.. automodule:: mip.exceptions
 .. automodule:: mip.model
 
 Model
@@ -114,3 +112,7 @@ Useful functions
 .. autofunction:: mip.minimize
 .. autofunction:: mip.maximize
 .. autofunction:: mip.xsum
+.. autofunction:: mip.compute_features
+.. autofunction:: mip.features
+
+

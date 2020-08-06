@@ -240,22 +240,26 @@ class Model:
 
                 x = m.add_var()
 
-            The following code creates a vector of binary variables
-            :code:`x[0], ..., x[n-1]` to model :code:`m`::
+            The following code adds a vector of binary variables
+            :code:`x[0], ..., x[n-1]` to the model :code:`m`::
 
                 x = [m.add_var(var_type=BINARY) for i in range(n)]
+
+        :rtype: mip.Var
         """
         return self.vars.add(name, lb, ub, obj, var_type, column)
 
     def add_var_tensor(
         self: "Model", shape: Tuple[int, ...], name: str, **kwargs
     ) -> mip.LinExprTensor:
-        """ Creates new variables in the model, arranging them in a numpy tensor and returning its reference
+        """Creates new variables in the model, arranging them in a numpy
+        tensor and returning its reference
 
         Args:
             shape (Tuple[int, ...]): shape of the numpy tensor
             name (str): variable name
-            **kwargs: all other named arguments will be used as Model.add_var() arguments
+            **kwargs: all other named arguments will be used as
+              :meth:`~mip.Model.add_var` arguments
 
         Examples:
 
@@ -264,6 +268,8 @@ class Model:
             to zero to model :code:`m`::
 
                 x = m.add_var_tensor((3, 5), "x")
+
+        :rtype: mip.LinExprTensor
         """
         if np is None:
             raise ModuleNotFoundError(
@@ -296,7 +302,7 @@ class Model:
         Args:
             lin_expr(mip.LinExpr): linear expression
             name(str): optional constraint name, used when saving model to
-            lp or mps files
+              lp or mps files
 
         Examples:
 
@@ -981,8 +987,8 @@ class Model:
             x_1 + x_2 + x_3 \leq 1
 
         Args:
-            constrs (Optional[List[Constrs]]): constraints that should be checked for
-                merging. If nor informed, all constraints will be checked.
+            constrs (Optional[List[mip.Constr]]): constraints that should be checked for
+              merging. All constraints will be checked if :code:`constrs` is None.
 
         """
         self.solver.clique_merge(constrs)
@@ -991,6 +997,8 @@ class Model:
     def generate_cuts(
         self: "Model",
         cut_types: Optional[List["mip.CutType"]] = None,
+        depth: int = 0,
+        npass: int = 0,
         max_cuts: int = 8192,
         min_viol: float = 1e-4,
     ) -> mip.CutPool:
@@ -1006,21 +1014,24 @@ class Model:
             cut_types (List[CutType]): types of cuts that can be generated, if
                 an empty list is specified then all available cut generators
                 will be called.
+            depth: depth of the search tree, when informed the cut generator
+                may decide to generate more/less cuts depending on the depth.
             max_cuts(int): cut separation will stop when at least max_cuts
                 violated cuts were found.
             min_viol(float): cuts which are not violated by at least min_viol
                 will be discarded.
 
 
+        :rtype: mip.CutPool
         """
         if self.status != mip.OptimizationStatus.OPTIMAL:
             raise mip.SolutionNotAvailable()
 
-        return self.solver.generate_cuts(cut_types, max_cuts)
+        return self.solver.generate_cuts(cut_types, depth, npass, max_cuts, min_viol)
 
     @property
     def conflict_graph(self: "Model") -> "mip.ConflictGraph":
-        """Returns the :class:`~mip.ConflictGraph` of a MIP model.
+        """: Returns the :class:`~mip.ConflictGraph` of a MIP model.
 
         :rtype: mip.ConflictGraph
         """
@@ -1216,11 +1227,9 @@ class Model:
 
     @property
     def objective_bound(self: "Model") -> Optional[numbers.Real]:
-        """
-            A valid estimate computed for the optimal solution cost,
-            lower bound in the case of minimization, equals to
-            :attr:`~mip.Model.objective_value` if the
-            optimal solution was found.
+        """:A valid estimate computed for the optimal solution cost, lower
+        bound in the case of minimization, equals to
+        :attr:`~mip.Model.objective_value` if the optimal solution was found.
         """
         if self.status not in [
             mip.OptimizationStatus.OPTIMAL,
@@ -1233,7 +1242,7 @@ class Model:
 
     @property
     def name(self: "Model") -> str:
-        """The problem (instance) name
+        """:The problem (instance) name.
 
            This name should be used to identify the instance that this model
            refers, e.g.: productionPlanningMay19. This name is stored when
@@ -1379,26 +1388,24 @@ class Model:
 
     @property
     def search_progress_log(self: "Model") -> mip.ProgressLog:
-        """
-            Log of bound improvements in the search.
-            The output of MIP solvers is a sequence of improving
-            incumbent solutions (primal bound) and estimates for the optimal
-            cost (dual bound). When the costs of these two bounds match the
-            search is concluded. In truncated searches, the most common
-            situation for hard problems, at the end of the search there is a
-            :attr:`~mip.Model.gap` between these bounds. This
-            property stores the detailed events of improving these
-            bounds during the search process. Analyzing the evolution
-            of these bounds you can see if you need to improve your
-            solver w.r.t. the production of feasible solutions, by including an
-            heuristic to produce a better initial feasible solution, for
-            example, or improve the formulation with cutting planes, for
-            example, to produce better dual bounds. To enable storing the
-            :attr:`~mip.Model.search_progress_log` set
-            :attr:`~mip.Model.store_search_progress_log` to True.
+        """:Log of bound improvements in the search.  The output of MIP
+        solvers is a sequence of improving incumbent solutions (primal bound)
+        and estimates for the optimal cost (dual bound). When the costs of
+        these two bounds match the search is concluded. In truncated searches,
+        the most common situation for hard problems, at the end of the search
+        there is a :attr:`~mip.Model.gap` between these bounds. This property
+        stores the detailed events of improving these bounds during the search
+        process. Analyzing the evolution of these bounds you can see if you
+        need to improve your solver w.r.t. the production of feasible
+        solutions, by including an heuristic to produce a better initial
+        feasible solution, for example, or improve the formulation with cutting
+        planes, for example, to produce better dual bounds. To enable storing
+        the :attr:`~mip.Model.search_progress_log` set
+        :attr:`~mip.Model.store_search_progress_log` to True.
 
-            :rtype: mip.ProgressLog
+        :rtype: mip.ProgressLog
         """
+
         return self.__plog
 
     @property
@@ -1690,11 +1697,12 @@ class Model:
 
     @property
     def infeas_tol(self: "Model") -> float:
-        """Maximum allowed violation for constraints. Default value: 1e-6.
-        Tightening this value can increase the numerical precision but also
-        probably increase the running time. As floating point computations
-        always involve some loss of precision, values too close to zero will
-        likely render some models impossible to optimize."""
+        """Maximum allowed violation for constraints. 
+
+        Default value: 1e-6.  Tightening this value can increase the numerical
+        precision but also probably increase the running time. As floating
+        point computations always involve some loss of precision, values too
+        close to zero will likely render some models impossible to optimize."""
 
         return self.__infeas_tol
 
@@ -1852,10 +1860,11 @@ class Model:
 
     @property
     def sol_pool_size(self: "Model") -> int:
-        """Size of the solution pool, i.e.: maximum number of solutions
-        that will be stored during the search. To check how many solutions were
-        found during the search use :meth:`~mip.Model.num_solutions`.
-        """
+
+        """Maximum number of solutions that will be stored during the search.
+        To check how many solutions were found during the search use
+        :meth:`~mip.Model.num_solutions`."""
+
         return self.__sol_pool_size
 
     @sol_pool_size.setter
@@ -1961,7 +1970,7 @@ class Model:
         """Checks the consistency of the optimization results, i.e., if the
         solution(s) produced by the MIP solver respect all constraints and
         variable values are within acceptable bounds and are integral when
-        requested"""
+        requested."""
         if self.status in [
             mip.OptimizationStatus.FEASIBLE,
             mip.OptimizationStatus.OPTIMAL,
@@ -2052,6 +2061,28 @@ def xsum(terms) -> "mip.LinExpr":
     for term in terms:
         result.add_term(term)
     return result
+
+
+def compute_features(model: "Model") -> List[float]:
+    """This function computes instance features for a MIP. Features are
+    instance characteristics, such as number of columns, rows, matrix density,
+    etc. These features can be used in machine learning algorithms to recommend
+    parameter settings. To check names of features that are computed in this
+    vector use :py:meth:`~mip.features`
+
+    Arguments:
+        model(Model): the MIP model were features will be extracted
+    """
+    return model.solver.feature_values()
+
+
+def features() -> List[str]:
+    """This function returns the list of problem feature names that can be
+    computed :py:meth:`~mip.compute_features`
+     """
+    import mip.cbc
+
+    return mip.cbc.feature_names()
 
 
 # function aliases
