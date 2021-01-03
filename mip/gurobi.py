@@ -63,7 +63,8 @@ try:
             if not libfile:
                 libfile = glob(
                     os.path.join(
-                        os.environ["GUROBI_HOME"], "lib/libgurobi.so.[0-9].[0-9].*",
+                        os.environ["GUROBI_HOME"],
+                        "lib/libgurobi.so.[0-9].[0-9].*",
                     )
                 )
 
@@ -221,6 +222,8 @@ ffi.cdef(
 
     int GRBreadmodel(GRBenv *env, const char *filename, GRBmodel **modelP);
 
+    int GRBread(GRBmodel *model, const char *filename);
+
     int GRBdelvars(GRBmodel *model, int numdel, int *ind );
 
     int GRBsetcharattrlist(GRBmodel *model, const char *attrname,
@@ -263,6 +266,7 @@ GRBsetcharattrlist = grblib.GRBsetcharattrlist
 GRBsetdblattrlist = grblib.GRBsetdblattrlist
 GRBwrite = grblib.GRBwrite
 GRBreadmodel = grblib.GRBreadmodel
+GRBread = grblib.GRBread
 GRBgetconstrbyname = grblib.GRBgetconstrbyname
 GRBupdatemodel = grblib.GRBupdatemodel
 GRBgetcharattrelement = grblib.GRBgetcharattrelement
@@ -447,7 +451,15 @@ class SolverGurobi(Solver):
         vtype = var_type.encode("utf-8")
 
         st = GRBaddvar(
-            self._model, nz, vind, vval, obj, lb, ub, vtype, name.encode("utf-8"),
+            self._model,
+            nz,
+            vind,
+            vval,
+            obj,
+            lb,
+            ub,
+            vtype,
+            name.encode("utf-8"),
         )
         if st != 0:
             raise ParameterNotAvailable(
@@ -663,6 +675,9 @@ class SolverGurobi(Solver):
 
         self.set_int_param("Seed", self.model.seed)
         self.set_int_param("PoolSolutions", self.model.sol_pool_size)
+
+        self.set_mip_gap(self.model.max_mip_gap)
+        self.set_mip_gap_abs(self.model.max_mip_gap_abs)
 
         # executing Gurobi to solve the formulation
         self.__clear_sol()
@@ -914,14 +929,29 @@ class SolverGurobi(Solver):
     def read(self, file_path: str) -> None:
         if not isfile(file_path):
             raise FileNotFoundError("File {} does not exist".format(file_path))
-        GRBfreemodel(self._model)
-        self._model = ffi.new("GRBmodel **")
-        st = GRBreadmodel(self._env, file_path.encode("utf-8"), self._model)
-        if st != 0:
-            raise InterfacingError(
-                "Could not read model {}, check contents".format(file_path)
-            )
-        self._model = self._model[0]
+
+        lfile = file_path.lower()
+
+        MEXTS = [".mps.gz", ".mps.bz2", ".lp.gz", ".lp.bz2", ".lp", ".mps"]
+        is_model = False
+        for ext in MEXTS:
+            if lfile.endswith(ext):
+                is_model = True
+                break
+
+        if is_model:
+            GRBfreemodel(self._model)
+            self._model = ffi.new("GRBmodel **")
+            st = GRBreadmodel(self._env, file_path.encode("utf-8"), self._model)
+            if st != 0:
+                raise InterfacingError(
+                    "Could not read model {}, check contents".format(file_path)
+                )
+            self._model = self._model[0]
+        else:
+            error = GRBread(self._model, file_path.encode("utf-8"))
+            if error:
+                raise IOError("Error loading %s" % file_path)
 
     def num_cols(self) -> int:
         return self.get_int_attr("NumVars") + self.__n_cols_buffer
@@ -1318,8 +1348,8 @@ class SolverGurobi(Solver):
 
 class SolverGurobiCB(SolverGurobi):
     """Just like previous solver, but aware that
-       running in the callback, so some methods
-       should be different (e.g. to get the frac sol)"""
+    running in the callback, so some methods
+    should be different (e.g. to get the frac sol)"""
 
     def __init__(
         self,
@@ -1472,7 +1502,10 @@ class SolverGurobiCB(SolverGurobi):
 
 class ModelGurobiCB(Model):
     def __init__(
-        self, grb_model: CData = ffi.NULL, cb_data: CData = ffi.NULL, where: int = -1,
+        self,
+        grb_model: CData = ffi.NULL,
+        cb_data: CData = ffi.NULL,
+        where: int = -1,
     ):
         # initializing variables with default values
         self.solver_name = "gurobicb"

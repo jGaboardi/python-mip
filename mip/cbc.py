@@ -157,6 +157,11 @@ if has_cbc:
 
     void Cbc_readLp(Cbc_Model *model, const char *file);
 
+    int Cbc_readBasis(Cbc_Model *model, const char *filename);
+
+    int Cbc_writeBasis(Cbc_Model *model, const char *filename, char
+        writeValues, int formatType);
+
     void Cbc_readMps(Cbc_Model *model, const char *file);
 
     char Cbc_supportsGzip();
@@ -767,7 +772,15 @@ class SolverCbc(Solver):
             CHAR_ONE if coltype.upper() == "B" or coltype.upper() == "I" else CHAR_ZERO
         )
         cbclib.Cbc_addCol(
-            self._model, name.encode("utf-8"), lb, ub, obj, isInt, numnz, vind, vval,
+            self._model,
+            name.encode("utf-8"),
+            lb,
+            ub,
+            obj,
+            isInt,
+            numnz,
+            vind,
+            vval,
         )
 
     def update_conflict_graph(self: "SolverCbc"):
@@ -780,7 +793,9 @@ class SolverCbc(Solver):
         return cbclib.CG_density(cg)
 
     def conflicting(
-        self: "SolverCbc", e1: Union["LinExpr", "Var"], e2: Union["LinExpr", "Var"],
+        self: "SolverCbc",
+        e1: Union["LinExpr", "Var"],
+        e2: Union["LinExpr", "Var"],
     ) -> bool:
         idx1, idx2 = (None, None)
         if isinstance(e1, Var):
@@ -1009,7 +1024,11 @@ class SolverCbc(Solver):
             nc1 = OsiCuts_sizeRowCuts(osi_cuts)
 
             Cbc_generateCuts(
-                self._model, int(cut_type.value), osi_cuts, int(depth), int(npass),
+                self._model,
+                int(cut_type.value),
+                osi_cuts,
+                int(depth),
+                int(npass),
             )
             nc2 = OsiCuts_sizeRowCuts(osi_cuts)
             if self.__verbose >= 1:
@@ -1261,7 +1280,9 @@ class SolverCbc(Solver):
         cbclib.Cbc_setIntParam(self._model, INT_PARAM_RANDOM_SEED, self.model.seed)
 
         cbclib.Cbc_setIntParam(
-            self._model, INT_PARAM_ROUND_INT_VARS, int(self.model.round_int_vars),
+            self._model,
+            INT_PARAM_ROUND_INT_VARS,
+            int(self.model.round_int_vars),
         )
 
         cbclib.Cbc_setIntParam(
@@ -1357,7 +1378,9 @@ class SolverCbc(Solver):
 
         return OptimizationStatus.NO_SOLUTION_FOUND
 
-    def get_log(self,) -> List[Tuple[numbers.Real, Tuple[numbers.Real, numbers.Real]]]:
+    def get_log(
+        self,
+    ) -> List[Tuple[numbers.Real, Tuple[numbers.Real, numbers.Real]]]:
         return self.__log
 
     def get_objective_bound(self) -> numbers.Real:
@@ -1499,9 +1522,11 @@ class SolverCbc(Solver):
             cbclib.Cbc_writeMps(self._model, fpstr)
         elif ".lp" in file_path.lower():
             cbclib.Cbc_writeLp(self._model, fpstr)
+        elif ".bas" in file_path.lower():
+            cbclib.Cbc_writeBasis(self._model, fpstr, CHAR_ONE, 2)
         else:
             raise ValueError(
-                "Enter a valid extension (.lp or .mps) \
+                "Enter a valid extension (.lp, .mps or .bas) \
                 to indicate the file format"
             )
 
@@ -1522,9 +1547,18 @@ class SolverCbc(Solver):
             cbclib.Cbc_readMps(self._model, fpstr)
         elif ".lp" in file_path.lower():
             cbclib.Cbc_readLp(self._model, fpstr)
+        elif ".bas" in file_path.lower():
+            status = cbclib.Cbc_readBasis(self._model, fpstr)
+            if status == -1:
+                raise IOError("Error reading %s" % file_path)
+            elif status == 0:
+                logger.warning("No values read from %s" % file_path)
+            elif status == 1:
+                logger.info("Optimal LP basis successfully loaded.")
+
         else:
             raise ValueError(
-                "Enter a valid extension (.lp or .mps) \
+                "Enter a valid extension (.lp, .mps or .bas) \
                 to indicate the file format"
             )
 
@@ -1813,7 +1847,15 @@ class SolverOsi(Solver):
             CHAR_ONE if var_type.upper() == "B" or var_type.upper() == "I" else CHAR_ZERO
         )
         cbclib.Osi_addCol(
-            self.osi, name.encode("utf-8"), lb, ub, obj, isInt, numnz, vind, vval,
+            self.osi,
+            name.encode("utf-8"),
+            lb,
+            ub,
+            obj,
+            isInt,
+            numnz,
+            vind,
+            vval,
         )
 
     def add_constr(self, lin_expr: "LinExpr", name: str = ""):
@@ -1927,7 +1969,9 @@ class SolverOsi(Solver):
     def get_objective_value(self) -> numbers.Real:
         return self.__obj_val
 
-    def get_log(self,) -> List[Tuple[numbers.Real, Tuple[numbers.Real, numbers.Real]]]:
+    def get_log(
+        self,
+    ) -> List[Tuple[numbers.Real, Tuple[numbers.Real, numbers.Real]]]:
         return []
 
     def get_objective_value_i(self, i: int) -> numbers.Real:
@@ -2200,7 +2244,7 @@ class SolverOsi(Solver):
         col = Column()
 
         for i in range(numnz):
-            col.constrs.append(Constr(self, cidx[i]))
+            col.constrs.append(Constr(self.model, cidx[i]))
             col.coeffs.append(ccoef[i])
 
         return col
